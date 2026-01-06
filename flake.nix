@@ -53,7 +53,7 @@
           meta = with pkgs.lib; {
             description = "AI coding assistant";
             homepage = "https://opencode.ai";
-            license = licenses.unfree;
+            license = licenses.mit;
             mainProgram = "opencode";
           };
         };
