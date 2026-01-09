@@ -1,0 +1,111 @@
+name: Update OpenCode Version
+
+on:
+  schedule:
+    - cron: '0 0 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  update-opencode:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Nix
+        uses: cachix/install-nix-action@v24
+
+      - name: Fetch latest release version
+        id: fetch-version
+        run: |
+          LATEST_VERSION=$(curl -s https://api.github.com/repos/anomalyco/opencode/releases/latest | jq -r '.tag_name' | sed 's/^v//')
+          echo "latest_version=$LATEST_VERSION" >> $GITHUB_OUTPUT
+          echo "Latest version: $LATEST_VERSION"
+
+      - name: Extract current version
+        id: current-version
+        run: |
+          CURRENT_VERSION=$(grep -E 'version = ".*";' flake.nix | head -1 | sed 's/.*"\(.*\)".*/\1/')
+          echo "current_version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
+          echo "Current version: $CURRENT_VERSION"
+
+      - name: Compare versions
+        id: compare
+        run: |
+          LATEST="${{ steps.fetch-version.outputs.latest_version }}"
+          CURRENT="${{ steps.current-version.outputs.current_version }}"
+          
+          if [ "$LATEST" = "$CURRENT" ]; then
+            echo "Already up to date"
+            echo "needs_update=false" >> $GITHUB_OUTPUT
+          else
+            echo "New version available: $LATEST"
+            echo "needs_update=true" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Compute SHA256 for darwin-arm64
+        if: steps.compare.outputs.needs_update == 'true'
+        id: darwin-hash
+        run: |
+          VERSION="${{ steps.fetch-version.outputs.latest_version }}"
+          HASH=$(nix-prefetch-url --type sha256 "https://github.com/anomalyco/opencode/releases/download/v${VERSION}/opencode-darwin-arm64.zip")
+          echo "darwin_hash=$HASH" >> $GITHUB_OUTPUT
+          echo "Darwin hash: $HASH"
+
+      - name: Compute SHA256 for linux-arm64-musl
+        if: steps.compare.outputs.needs_update == 'true'
+        id: linux-hash
+        run: |
+          VERSION="${{ steps.fetch-version.outputs.latest_version }}"
+          HASH=$(nix-prefetch-url --type sha256 "https://github.com/anomalyco/opencode/releases/download/v${VERSION}/opencode-linux-arm64-musl.tar.gz")
+          echo "linux_hash=$HASH" >> $GITHUB_OUTPUT
+          echo "Linux hash: $HASH"
+
+      - name: Update flake.nix
+        if: steps.compare.outputs.needs_update == 'true'
+        run: |
+          NEW_VERSION="${{ steps.fetch-version.outputs.latest_version }}"
+          DARWIN_HASH="${{ steps.darwin-hash.outputs.darwin_hash }}"
+          LINUX_HASH="${{ steps.linux-hash.outputs.linux_hash }}"
+          
+          sed -i 's/version = ".*";/version = "'"$NEW_VERSION"'";/' flake.nix
+          sed -i '18s/sha256 = ".*";/sha256 = "'"$DARWIN_HASH"'";/' flake.nix
+          sed -i '23s/sha256 = ".*";/sha256 = "'"$LINUX_HASH"'";/' flake.nix
+          
+          echo "Updated flake.nix with version $NEW_VERSION"
+
+      - name: Create branch and PR
+        if: steps.compare.outputs.needs_update == 'true'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          NEW_VERSION="${{ steps.fetch-version.outputs.latest_version }}"
+          BRANCH_NAME="update-opencode-v${NEW_VERSION}"
+          
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          
+          git checkout -b "$BRANCH_NAME"
+          git add flake.nix
+          git commit -m "chore: update opencode to v${NEW_VERSION}"
+          git push -u origin "$BRANCH_NAME"
+          
+          gh pr create \
+            --title "chore: update opencode to v${NEW_VERSION}" \
+            --body "$(cat <<'EOF'
+          ## Summary
+          Updated OpenCode to v${NEW_VERSION}
+          
+          ### Changes
+          - Bumped version from ${{ steps.current-version.outputs.current_version }} to ${NEW_VERSION}
+          - Updated SHA256 hash for aarch64-darwin
+          - Updated SHA256 hash for aarch64-linux
+          
+          ### Release Notes
+          https://github.com/anomalyco/opencode/releases/tag/v${NEW_VERSION}
+          EOF
+          )"
