@@ -96,7 +96,7 @@ jobs:
           
           gh pr create \
             --title "chore: update opencode to v${NEW_VERSION}" \
-            --body "$(cat <<'EOF'
+            --body "$(cat <<EOF
           ## Summary
           Updated OpenCode to v${NEW_VERSION}
           
