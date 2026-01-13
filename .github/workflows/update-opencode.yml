@@ -78,34 +78,25 @@ jobs:
           
           echo "Updated flake.nix with version $NEW_VERSION"
 
-      - name: Create branch and PR
+      - name: Verify flake builds
         if: steps.compare.outputs.needs_update == 'true'
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "Verifying flake evaluation..."
+          nix flake check --no-build
+          
+          echo "Building aarch64-linux package..."
+          nix build .#packages.aarch64-linux.default --dry-run
+          
+          echo "Flake verification passed!"
+
+      - name: Commit and push
+        if: steps.compare.outputs.needs_update == 'true'
         run: |
           NEW_VERSION="${{ steps.fetch-version.outputs.latest_version }}"
-          BRANCH_NAME="update-opencode-v${NEW_VERSION}"
           
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           
-          git checkout -b "$BRANCH_NAME"
           git add flake.nix
           git commit -m "chore: update opencode to v${NEW_VERSION}"
-          git push -u origin "$BRANCH_NAME"
-          
-          gh pr create \
-            --title "chore: update opencode to v${NEW_VERSION}" \
-            --body "$(cat <<EOF
-          ## Summary
-          Updated OpenCode to v${NEW_VERSION}
-          
-          ### Changes
-          - Bumped version from ${{ steps.current-version.outputs.current_version }} to ${NEW_VERSION}
-          - Updated SHA256 hash for aarch64-darwin
-          - Updated SHA256 hash for aarch64-linux
-          
-          ### Release Notes
-          https://github.com/anomalyco/opencode/releases/tag/v${NEW_VERSION}
-          EOF
-          )"
+          git push
