@@ -7,7 +7,7 @@
 
   outputs = { self, nixpkgs }:
     let
-      version = "1.1.12";
+      version = "1.1.15";
 
       mkOpencode = system: pkgs:
         let
@@ -15,12 +15,12 @@
             "aarch64-darwin" = {
               platform = "darwin-arm64";
               extension = "zip";
-              sha256 = "1j6hnxwr08g7bapvih483h1mg9458fwhlbs6wv8dy2il7ming2xf";
+              sha256 = "16q5l80nwclcrdyfh29i3br29nfqzdjs1ivxhr24ymgprq610gl2";
             };
             "aarch64-linux" = {
               platform = "linux-arm64-musl";
               extension = "tar.gz";
-              sha256 = "01mklypm5ls65703p2namlr9pvk53czk7rz49pvi5vych0xwspyl";
+              sha256 = "1k8r9hc7qf8p0pqlnbnzrlvwxq2j73pb0wf7k22plf7amj2rmh7b";
             };
           }.${system};
         in
